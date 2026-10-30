@@ -202,10 +202,41 @@ def preset_to_units(preset: dict[str, Any], length_factor: float, force_factor: 
             "loads": converted_loads}
 
 
-st.title("Beam Analysis Calculator")
-st.caption("Support reactions, shear, bending moment, deflection, slope, and stress diagrams.")
+st.markdown("""
+<style>
+.stApp { background: #f5f7fb; color: #152238; }
+[data-testid="stHeader"] { background: rgba(255,255,255,.94); }
+[data-testid="stToolbar"] { visibility: hidden; }
+.block-container { max-width: 1480px; padding-top: 1.1rem; padding-bottom: 4rem; }
+html, body, [class*="css"] { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+h1, h2, h3 { color: #13243c !important; letter-spacing: -.025em; }
+h1 { font-size: 2.1rem !important; font-weight: 750 !important; }
+[data-testid="stSidebar"] { background: #fff; border-right: 1px solid #e3e8f0; }
+[data-testid="stBaseButton-primary"] { background: #1769aa; border-color: #1769aa; }
+[data-testid="stBaseButton-primary"]:hover { background: #10578f; border-color: #10578f; }
+[data-testid="stDataFrame"], [data-testid="stTable"] { border: 1px solid #e3e8f0; border-radius: 10px; }
+.site-nav { display:flex; align-items:center; justify-content:space-between; gap:20px; background:#fff; border:1px solid #e5eaf1; border-radius:12px; padding:14px 22px; margin:0 0 28px; box-shadow:0 2px 8px rgba(24,42,68,.035); }
+.site-brand { color:#152b45; font-size:18px; font-weight:800; letter-spacing:-.03em; white-space:nowrap; }
+.site-brand span { color:#1674b8; }
+.site-links { display:flex; gap:25px; color:#53647a; font-size:13px; font-weight:600; }
+.site-account { color:#1769aa; font-size:13px; font-weight:700; white-space:nowrap; }
+.hero-kicker { color:#1769aa; text-transform:uppercase; font-size:11px; font-weight:800; letter-spacing:.12em; margin-bottom:8px; }
+.hero-copy { color:#607087; font-size:15px; max-width:760px; margin-top:5px; margin-bottom:20px; }
+.section-note { color:#68788d; font-size:13px; margin-top:-8px; margin-bottom:12px; }
+.beam-preview { background:#fff; border:1px solid #e4eaf2; border-radius:12px; padding:16px 20px 8px; margin:12px 0 22px; }
+.beam-preview-title { color:#273b54; font-size:14px; font-weight:700; margin:0 0 4px; }
+</style>
+<div class="site-nav">
+  <div class="site-brand">OPTIMAL<span>BEAM</span></div>
+  <div class="site-links"><span>Beam Calculator</span><span>2D Structural Analysis</span><span>Free Tools</span><span>Resources</span></div>
+  <div class="site-account">Log in &nbsp;&nbsp; <span style="background:#1769aa;color:white;padding:9px 14px;border-radius:7px">Try for free</span></div>
+</div>
+<div class="hero-kicker">Free structural analysis tool</div>
+<h1 style="margin:0">Beam Calculator</h1>
+<div class="hero-copy">Analyze simply supported, cantilever, fixed and continuous beams. Calculate reactions, shear, moment, slope, deflection and stress diagrams.</div>
+""", unsafe_allow_html=True)
 
-unit_system = st.sidebar.selectbox("Unit system", ["Metric", "Imperial"])
+unit_system = st.radio("Unit system", ["Metric", "Imperial"], horizontal=True, key="unit_system_selector")
 if unit_system == "Metric":
     length_label, force_label, line_label, moment_label = "m", "kN", "kN/m", "kN·m"
     length_to_m, force_to_kn, line_to_kn_m, moment_to_kn_m = 1.0, 1.0, 1.0, 1.0
@@ -247,18 +278,23 @@ elif st.session_state.get("beam_model_units") != unit_system:
                        f"supports_{unit_system}", f"loads_{unit_system}",
                        f"beam_length_{old_units}", f"beam_length_{unit_system}"):
         st.session_state.pop(widget_key, None)
+st.subheader("Example models")
+preset_col, preset_button_col = st.columns([4, 1])
+with preset_col:
+    chosen_preset = st.selectbox("Start with a common beam case", ["(custom)", *PRESETS.keys()])
+with preset_button_col:
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    load_example = st.button("Load example", use_container_width=True)
+if load_example and chosen_preset != "(custom)":
+    factors = (1.0, 1.0, 1.0, 1.0) if unit_system == "Metric" else (3.280839895, 0.224808943, 0.068521766, 0.73756215)
+    preset_model = preset_to_units(PRESETS[chosen_preset], *factors)
+    st.session_state.beam_model = {"length": preset_model["length"], "supports": pd.DataFrame(preset_model["supports"]), "loads": pd.DataFrame(preset_model["loads"])}
+    st.session_state.beam_model_units = unit_system
+    for widget_key in (f"supports_{unit_system}", f"loads_{unit_system}", f"beam_length_{unit_system}"):
+        st.session_state.pop(widget_key, None)
+    st.session_state.analysis_result = None
+
 with st.sidebar:
-    st.subheader("Example models")
-    chosen_preset = st.selectbox("Load a preset", ["(custom)", *PRESETS.keys()])
-    if st.button("Load selected example", use_container_width=True) and chosen_preset != "(custom)":
-        factors = (1.0, 1.0, 1.0, 1.0) if unit_system == "Metric" else (3.280839895, 0.224808943, 0.068521766, 0.73756215)
-        model = preset_to_units(PRESETS[chosen_preset], *factors)
-        st.session_state.beam_model = {"length": model["length"], "supports": pd.DataFrame(model["supports"]), "loads": pd.DataFrame(model["loads"])}
-        st.session_state.beam_model_units = unit_system
-        for widget_key in (f"supports_{unit_system}", f"loads_{unit_system}", f"beam_length_{unit_system}"):
-            st.session_state.pop(widget_key, None)
-        st.session_state.analysis_result = None
-    st.divider()
     st.subheader("Section properties")
     E_input = st.number_input(f"Elastic modulus E ({e_label})", min_value=0.001, value=float(e_default), step=float(e_default/100))
     I_input = st.number_input(f"Second moment I ({i_label})", min_value=0.000001, value=float(i_default), format="%.6g")
@@ -268,23 +304,66 @@ with st.sidebar:
     st.caption("Uniform section and material properties are assumed along the beam.")
 
 model = st.session_state.beam_model
+st.subheader("Model Setup")
+st.markdown('<div class="section-note">Set the span, supports, loads and section properties for this beam model.</div>', unsafe_allow_html=True)
 top1, top2 = st.columns([1, 1])
 with top1:
     model_name = st.text_input("Model name", value=st.session_state.get("model_name", "Untitled"), key="model_name")
 with top2:
     beam_length = st.number_input(f"Beam length ({length_label})", min_value=0.01, value=float(model["length"]), step=0.5, key=f"beam_length_{unit_system}")
-st.subheader("Supports")
-support_options = pd.DataFrame({"Type": pd.Series(dtype="str"), "Location": pd.Series(dtype="float")})
-supports = st.data_editor(model["supports"], num_rows="dynamic", use_container_width=True, key=f"supports_{unit_system}", column_config={"Type": st.column_config.SelectboxColumn(options=["Pinned", "Roller", "Fixed"], required=True), "Location": st.column_config.NumberColumn(min_value=0.0, max_value=float(beam_length), step=0.25, format="%.3f")})
-st.subheader("Applied loads")
-loads = st.data_editor(model["loads"], num_rows="dynamic", use_container_width=True, key=f"loads_{unit_system}", column_config={
-    "Type": st.column_config.SelectboxColumn(options=["Point", "Distributed", "Moment"], required=True),
-    "Start": st.column_config.NumberColumn(f"Start ({length_label})", min_value=0.0, max_value=float(beam_length), step=0.25, format="%.3f"),
-    "End": st.column_config.NumberColumn(f"End ({length_label})", min_value=0.0, max_value=float(beam_length), step=0.25, format="%.3f"),
-    "Magnitude": st.column_config.NumberColumn(f"Magnitude ({force_label} / {line_label} / {moment_label})", format="%.4g"),
-    "End magnitude": st.column_config.NumberColumn(f"End magnitude ({line_label})", format="%.4g"),
-})
+with st.container(border=True):
+    st.subheader("Supports")
+    supports = st.data_editor(model["supports"], num_rows="dynamic", use_container_width=True, key=f"supports_{unit_system}", column_config={"Type": st.column_config.SelectboxColumn(options=["Pinned", "Roller", "Fixed"], required=True), "Location": st.column_config.NumberColumn(min_value=0.0, max_value=float(beam_length), step=0.25, format="%.3f")})
+with st.container(border=True):
+    st.subheader("Applied loads")
+    loads = st.data_editor(model["loads"], num_rows="dynamic", use_container_width=True, key=f"loads_{unit_system}", column_config={
+        "Type": st.column_config.SelectboxColumn(options=["Point", "Distributed", "Moment"], required=True),
+        "Start": st.column_config.NumberColumn(f"Start ({length_label})", min_value=0.0, max_value=float(beam_length), step=0.25, format="%.3f"),
+        "End": st.column_config.NumberColumn(f"End ({length_label})", min_value=0.0, max_value=float(beam_length), step=0.25, format="%.3f"),
+        "Magnitude": st.column_config.NumberColumn(f"Magnitude ({force_label} / {line_label} / {moment_label})", format="%.4g"),
+        "End magnitude": st.column_config.NumberColumn(f"End magnitude ({line_label})", format="%.4g"),
+    })
 st.caption("Loads are entered downward as positive. For a distributed load, use the start and end intensities; positive applied moments are counter-clockwise.")
+
+def draw_beam_preview(span: float, support_rows: pd.DataFrame, load_rows: pd.DataFrame) -> str:
+    left, right, beam_y = 58, 942, 82
+    scale = (right - left) / max(span, 0.01)
+    parts = [f'<svg viewBox="0 0 1000 155" width="100%" role="img" aria-label="Beam model preview">',
+             '<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#dc5d4b"/></marker></defs>',
+             f'<line x1="{left}" y1="{beam_y}" x2="{right}" y2="{beam_y}" stroke="#344b66" stroke-width="8" stroke-linecap="round"/>',
+             f'<text x="{left}" y="142" fill="#718096" font-size="13">0 {length_label}</text>',
+             f'<text x="{right}" y="142" fill="#718096" font-size="13" text-anchor="end">{span:g} {length_label}</text>']
+    for _, row in support_rows.dropna(subset=["Type", "Location"]).iterrows():
+        x = left + float(row["Location"]) * scale
+        kind = row["Type"]
+        if kind == "Fixed":
+            parts.append(f'<path d="M{x-8},{beam_y-15} L{x+8},{beam_y-15} L{x+8},{beam_y+16} L{x-8},{beam_y+16} Z" fill="#75869a"/>')
+            parts.append(f'<path d="M{x-17},{beam_y-15} l-10,8 m10,0 l-10,8 m10,0 l-10,8" stroke="#75869a" stroke-width="2"/>')
+        else:
+            parts.append(f'<path d="M{x},{beam_y+5} l-15,22 h30 z" fill="#eff5fb" stroke="#66809b" stroke-width="2"/>')
+            if kind == "Roller":
+                parts.append(f'<circle cx="{x-7}" cy="{beam_y+31}" r="3" fill="#66809b"/><circle cx="{x+7}" cy="{beam_y+31}" r="3" fill="#66809b"/>')
+        parts.append(f'<text x="{x}" y="{beam_y+51}" fill="#55677e" font-size="12" text-anchor="middle">{kind}</text>')
+    for _, row in load_rows.dropna(subset=["Type", "Start", "Magnitude"]).iterrows():
+        kind = row["Type"]
+        x1 = left + float(row["Start"]) * scale
+        if kind == "Point":
+            parts.append(f'<line x1="{x1}" y1="22" x2="{x1}" y2="{beam_y-7}" stroke="#dc5d4b" stroke-width="2.5" marker-end="url(#arrow)"/>')
+            parts.append(f'<text x="{x1}" y="17" text-anchor="middle" fill="#bd4939" font-size="12">{float(row["Magnitude"]):g} {force_label}</text>')
+        elif kind == "Distributed":
+            end_location = float(row["End"]) if pd.notna(row["End"]) else float(row["Start"])
+            x2 = left + end_location * scale
+            parts.append(f'<line x1="{x1}" y1="25" x2="{x2}" y2="25" stroke="#dc5d4b" stroke-width="2"/>')
+            for px in np.linspace(x1, x2, max(2, int((x2-x1)/36)+1)):
+                parts.append(f'<line x1="{px:.1f}" y1="29" x2="{px:.1f}" y2="{beam_y-7}" stroke="#dc5d4b" stroke-width="1.5" marker-end="url(#arrow)"/>')
+        else:
+            parts.append(f'<path d="M{x1-18},{beam_y-9} A19,19 0 1 1 {x1+18},{beam_y-9}" fill="none" stroke="#dc5d4b" stroke-width="2" marker-end="url(#arrow)"/>')
+    parts.append('</svg>')
+    return ''.join(parts)
+
+with st.container(border=True):
+    st.markdown('<div class="beam-preview-title">Beam model preview</div>', unsafe_allow_html=True)
+    st.markdown(draw_beam_preview(float(beam_length), supports, loads), unsafe_allow_html=True)
 
 if st.button("Run analysis", type="primary", use_container_width=True):
     try:
