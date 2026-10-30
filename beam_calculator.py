@@ -325,6 +325,95 @@ with st.container(border=True):
     })
 st.caption("Loads are entered downward as positive. For a distributed load, use the start and end intensities; positive applied moments are counter-clockwise.")
 
+with st.container(border=True):
+    st.subheader("Section Properties")
+    st.markdown('<div class="section-note">Choose a material and cross-section. Geometric shapes calculate area, inertia and extreme-fiber distances automatically.</div>', unsafe_allow_html=True)
+    material_defaults = {
+        "Steel": (200000.0, 29000.0),
+        "Aluminum": (69000.0, 10000.0),
+        "Timber": (11000.0, 1600.0),
+        "Concrete": (30000.0, 4350.0),
+        "Custom": (float(e_default), float(e_default)),
+    }
+    section_head = st.columns([1.1, 1.1, 1.4])
+    with section_head[0]:
+        material = st.selectbox("Material", list(material_defaults), key="section_material")
+    with section_head[1]:
+        section_shape = st.selectbox("Section type", ["Custom properties", "Rectangle", "Solid circle", "I-section", "Rectangular hollow"], key="section_shape")
+    with section_head[2]:
+        section_name = st.text_input("Section name", value="Custom beam section", key="section_name")
+    material_e = material_defaults[material][0 if unit_system == "Metric" else 1]
+    E_input = st.number_input(f"Elastic modulus E ({e_label})", min_value=0.001,
+                              value=float(material_e), step=max(float(material_e/100), 0.1),
+                              key=f"section_E_{unit_system}_{material}")
+    section_dim_unit = "mm" if unit_system == "Metric" else "in"
+    section_error = None
+    if section_shape == "Custom properties":
+        p1, p2, p3, p4 = st.columns(4)
+        with p1:
+            A_input = st.number_input(f"Area ({a_label})", min_value=0.000001, value=float(a_default), format="%.6g", key=f"section_A_{unit_system}")
+        with p2:
+            I_input = st.number_input(f"Moment of inertia ({i_label})", min_value=0.000001, value=float(i_default), format="%.6g", key=f"section_I_{unit_system}")
+        with p3:
+            c_top_input = st.number_input(f"y-top ({c_label})", min_value=0.0, value=float(c_default), format="%.6g", key=f"section_ctop_{unit_system}")
+        with p4:
+            c_bottom_input = st.number_input(f"y-bottom ({c_label})", min_value=0.0, value=float(c_default), format="%.6g", key=f"section_cbottom_{unit_system}")
+    else:
+        if section_shape == "Rectangle":
+            a, b = st.columns(2)
+            with a:
+                width = st.number_input(f"Width ({section_dim_unit})", min_value=0.01, value=200.0 if unit_system == "Metric" else 8.0, key=f"rect_width_{unit_system}")
+            with b:
+                depth = st.number_input(f"Depth ({section_dim_unit})", min_value=0.01, value=300.0 if unit_system == "Metric" else 12.0, key=f"rect_depth_{unit_system}")
+            A_geom = width * depth
+            I_geom = width * depth**3 / 12
+            c_geom = depth / 2
+        elif section_shape == "Solid circle":
+            diameter = st.number_input(f"Diameter ({section_dim_unit})", min_value=0.01, value=200.0 if unit_system == "Metric" else 8.0, key=f"circle_diameter_{unit_system}")
+            A_geom = np.pi * diameter**2 / 4
+            I_geom = np.pi * diameter**4 / 64
+            c_geom = diameter / 2
+        elif section_shape == "I-section":
+            i1, i2, i3 = st.columns(3)
+            with i1:
+                flange_width = st.number_input(f"Flange width ({section_dim_unit})", min_value=0.01, value=200.0 if unit_system == "Metric" else 8.0, key=f"i_bf_{unit_system}")
+            with i2:
+                overall_depth = st.number_input(f"Overall depth ({section_dim_unit})", min_value=0.02, value=300.0 if unit_system == "Metric" else 12.0, key=f"i_h_{unit_system}")
+            with i3:
+                flange_thickness = st.number_input(f"Flange thickness ({section_dim_unit})", min_value=0.01, value=12.0 if unit_system == "Metric" else 0.5, key=f"i_tf_{unit_system}")
+            web_thickness = st.number_input(f"Web thickness ({section_dim_unit})", min_value=0.01, value=8.0 if unit_system == "Metric" else 0.3, key=f"i_tw_{unit_system}")
+            if 2*flange_thickness >= overall_depth or web_thickness >= flange_width:
+                section_error = "I-section geometry needs depth greater than twice the flange thickness, and flange width greater than web thickness."
+                A_geom, I_geom, c_geom = 0.0, 0.0, 0.0
+            else:
+                web_depth = overall_depth - 2*flange_thickness
+                A_geom = 2*flange_width*flange_thickness + web_thickness*web_depth
+                I_geom = 2*(flange_width*flange_thickness**3/12 + flange_width*flange_thickness*((overall_depth-flange_thickness)/2)**2) + web_thickness*web_depth**3/12
+                c_geom = overall_depth/2
+        else:  # Rectangular hollow section
+            h1, h2, h3 = st.columns(3)
+            with h1:
+                outer_width = st.number_input(f"Outer width ({section_dim_unit})", min_value=0.02, value=200.0 if unit_system == "Metric" else 8.0, key=f"rhs_b_{unit_system}")
+            with h2:
+                outer_depth = st.number_input(f"Outer depth ({section_dim_unit})", min_value=0.02, value=300.0 if unit_system == "Metric" else 12.0, key=f"rhs_h_{unit_system}")
+            with h3:
+                wall = st.number_input(f"Wall thickness ({section_dim_unit})", min_value=0.01, value=10.0 if unit_system == "Metric" else 0.4, key=f"rhs_t_{unit_system}")
+            if 2*wall >= min(outer_width, outer_depth):
+                section_error = "Hollow section wall thickness must be less than half of the smaller outside dimension."
+                A_geom, I_geom, c_geom = 0.0, 0.0, 0.0
+            else:
+                A_geom = outer_width*outer_depth - (outer_width-2*wall)*(outer_depth-2*wall)
+                I_geom = (outer_width*outer_depth**3 - (outer_width-2*wall)*(outer_depth-2*wall)**3)/12
+                c_geom = outer_depth/2
+        A_input, I_input = A_geom, I_geom
+        c_top_input = c_bottom_input = c_geom
+        output_cols = st.columns(4)
+        output_cols[0].metric(f"Area ({a_label})", f"{A_input:,.4g}")
+        output_cols[1].metric(f"I ({i_label})", f"{I_input:,.4g}")
+        output_cols[2].metric(f"y-top ({c_label})", f"{c_top_input:,.4g}")
+        output_cols[3].metric(f"y-bottom ({c_label})", f"{c_bottom_input:,.4g}")
+    st.caption(f"{section_name} is treated as a uniform section over the full beam length. Stress uses σ = M·y/I and average shear uses τ = V/A.")
+
 def draw_beam_preview(span: float, support_rows: pd.DataFrame, load_rows: pd.DataFrame) -> str:
     left, right, beam_y = 58, 942, 82
     scale = (right - left) / max(span, 0.01)
@@ -373,6 +462,8 @@ if st.button("Run analysis", type="primary", use_container_width=True):
         loads["End magnitude"] = loads["End magnitude"].fillna(loads["Magnitude"])
         if supports.empty:
             raise ValueError("Add at least one support.")
+        if section_error:
+            raise ValueError(section_error)
         if ((supports["Location"] < 0) | (supports["Location"] > beam_length)).any():
             raise ValueError("Every support must be on the beam.")
         if not loads.empty and ((loads["Start"] < 0) | (loads["End"] > beam_length) | (loads["End"] < loads["Start"])).any():
@@ -393,6 +484,14 @@ if st.button("Run analysis", type="primary", use_container_width=True):
         result = solve_beam(beam_length*length_to_m, s_si, l_si, E_input*e_to_kn_m2, I_input*i_to_m4, A_input*a_to_m2, c_top_input*c_to_m, c_bottom_input*c_to_m)
         st.session_state.analysis_result = result
         st.session_state.analysis_info = {"name": model_name, "length": beam_length, "units": unit_system, "supports": supports, "loads": loads}
+        st.session_state.analysis_info = {
+            "name": model_name, "length": beam_length, "units": unit_system,
+            "supports": supports, "loads": loads,
+            "section": {"name": section_name, "material": material, "shape": section_shape,
+                        "E": E_input, "E units": e_label, "A": A_input, "A units": a_label,
+                        "I": I_input, "I units": i_label, "y top": c_top_input,
+                        "y bottom": c_bottom_input, "distance units": c_label},
+        }
     except Exception as exc:
         st.error(str(exc))
 
@@ -402,6 +501,8 @@ if st.session_state.get("analysis_result"):
     d = result["diagrams"]
     st.divider()
     st.header("Analysis results")
+    section_used = info["section"]
+    st.caption(f"Section: {section_used['name']} · {section_used['material']} · {section_used['shape']} · E = {section_used['E']:,.5g} {section_used['E units']} · I = {section_used['I']:,.5g} {section_used['I units']}")
     if unit_system == "Metric":
         x_plot = d["x"]
         v_plot, m_plot = d["shear"], d["moment"]
@@ -455,6 +556,8 @@ if st.session_state.get("analysis_result"):
     export_data = {"model": info["name"], "date": date.today().isoformat(), "units": info["units"],
                    "beam_length": float(info["length"]), "supports": info["supports"].to_dict(orient="records"),
                    "loads": info["loads"].to_dict(orient="records"), "reactions": reactions.to_dict(orient="records"),
+                   "loads": info["loads"].to_dict(orient="records"), "section": info["section"],
+                   "reactions": reactions.to_dict(orient="records"),
                    "diagrams": {"x_m": d["x"].tolist(), "shear_kN": d["shear"].tolist(), "moment_kNm": d["moment"].tolist(),
                                 "deflection_m": d["deflection"].tolist(), "slope": d["slope"].tolist(), "shear_stress_kPa": d["shear_stress"].tolist(), "bending_stress_top_kPa": d["bend_stress_top"].tolist()}}
     st.download_button("Download complete model and results (JSON)", json.dumps(export_data, indent=2, allow_nan=True), file_name=f"{model_name.replace(' ', '_')}_beam_results.json", mime="application/json")
