@@ -6,8 +6,12 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
+
+try:
+    import plotly.graph_objects as go
+except ModuleNotFoundError:
+    go = None
 
 
 st.set_page_config(page_title="Beam Analysis Calculator", page_icon="📐", layout="wide")
@@ -349,6 +353,11 @@ if st.session_state.get("analysis_result"):
     metrics[3].metric(f"Max |bending stress| ({stress_unit})", f"{np.nanmax(np.abs(stress_plot)):.4g}")
 
     def plot_diagram(title: str, y: np.ndarray, y_label: str, color: str) -> None:
+        if go is None:
+            st.subheader(title)
+            chart_data = pd.DataFrame({"Position": x_plot, y_label: y})
+            st.line_chart(chart_data, x="Position", y=y_label, height=350)
+            return
         fig = go.Figure(go.Scatter(x=x_plot, y=y, mode="lines", line={"color": color, "width": 3}, fill="tozeroy", fillcolor=f"rgba(45, 125, 210, 0.14)"))
         fig.add_hline(y=0, line_color="#64748b", line_width=1)
         fig.update_layout(title=title, xaxis_title=f"Position ({x_unit})", yaxis_title=y_label, height=350, margin={"l": 20, "r": 20, "t": 55, "b": 30}, template="plotly_white")
